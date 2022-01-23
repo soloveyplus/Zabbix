@@ -1,0 +1,84 @@
+1. На сервере zabbix устанавливаем MS odbc (он нужен для запросов,только чтение, sql с сервера zabbix на MSSQL сервер):
+https://docs.microsoft.com/en-us/sql/connect/odbc/linux-mac/installing-the-microsoft-odbc-driver-for-sql-server?view=sql-server-ver15&viewFallbackFrom=sql-server-ver15.
+Для нужного сервера linux
+
+На примере Ubuntu:
+
+sudo su
+curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
+
+#Download appropriate package for the OS version
+#Choose only ONE of the following, corresponding to your OS version
+
+#Ubuntu 16.04
+curl https://packages.microsoft.com/config/ubuntu/16.04/prod.list > /etc/apt/sources.list.d/mssql-release.list
+
+#Ubuntu 18.04
+curl https://packages.microsoft.com/config/ubuntu/18.04/prod.list > /etc/apt/sources.list.d/mssql-release.list
+
+#Ubuntu 20.04
+curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list > /etc/apt/sources.list.d/mssql-release.list
+
+#Ubuntu 21.04
+curl https://packages.microsoft.com/config/ubuntu/21.04/prod.list > /etc/apt/sources.list.d/mssql-release.list
+
+exit
+sudo apt-get update
+sudo ACCEPT_EULA=Y apt-get install -y msodbcsql17
+# optional: for bcp and sqlcmd
+sudo ACCEPT_EULA=Y apt-get install -y mssql-tools
+echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
+source ~/.bashrc
+# optional: for unixODBC development headers
+sudo apt-get install -y unixodbc-dev
+
+
+2. Проверяем, что ODBC установился верно:
+odbcinst -j
+Должен вывести инфу
+
+3. Создаем файл /etc/odbc.ini:
+
+[server-sql] # ODBC Data Source Name (DSN) - указываем имя, которое будет использовать при подключении шаблона к host (сами придумали)
+Description = ms sql test
+Driver      = ODBC Driver 17 for SQL Server # Эта инфа  - название драйвера из предидущего вывода
+Server      = tcp:192.168.1.227,1433  # Указываем IP адрес сервера MSSQL, протокол и порт 
+
+4. Регистрируем Data Source: 
+odbcinst -i -s -f /etc/odbc.ini
+
+5. Создаем пользователя через запрос sql в студио(где, user - пользователь MSSQL, password - пароль пользователь MSSQL):
+
+USE [master]
+GO
+CREATE LOGIN [user] WITH PASSWORD=N'password', DEFAULT_DATABASE=[master], CHECK_EXPIRATION=OFF, CHECK_POLICY=OFF
+GO
+use [master]
+GO
+GRANT VIEW ANY DEFINITION TO [user]
+GO
+use [master]
+GO
+GRANT VIEW SERVER STATE TO [user]
+GO
+use [master]
+GO
+GRANT CONNECT SQL TO [user]
+GO
+
+
+6. Проверяем с логином и паролем, что можно подключится к серверу MSSQL с сервера zabbix:
+isql -v server-sql user password   # логин и пароль
+Вывод должен быть Connected!!!
+
+7. Качаем и устанавливаем шаблон для нужного zabbix и привязываем его к узлу (zabbix агент уже установлен):
+https://git.zabbix.com/projects/ZBX/repos/zabbix/browse/templates/db/mssql_odbc/template_db_mssql_odbc.xml?at=release/5.0
+Чтобы скачать - нажать - Raw file
+
+8. В макросах шаблона добавляем три строчки:
+{$MSSQL.DSN}           server-sql  ### это из пункта три в квадратных скобках
+{$MSSQL.PASSWORD}      zx          ### логин пользователя MSSQL
+{$MSSQL.USER}          zx          ### пароль пользователя MSSQL
+
+9. Через некоторое время наблюдаем, что появились данные с MSSQL сервера в zabbix в виде графиков.
+
