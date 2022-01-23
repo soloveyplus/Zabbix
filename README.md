@@ -1,1 +1,1 @@
-Мониторинг MS SQL Server в Zabbix
+Настройка мониторинг MSSQL Server в Zabbix
